@@ -55,9 +55,6 @@ import signal
 import sqlite3
 import time
 import re
-import threading
-import requests
-import instaloader
 from .sql_updates import check_and_update, check_already_liked
 from .sql_updates import check_already_followed, check_already_unfollowed
 from .sql_updates import insert_media, insert_username, insert_unfollow_count
@@ -285,10 +282,9 @@ class InstaBot:
         self.write_log(log_string)
         self.login()
         self.populate_user_blacklist()
-        if threading.current_thread() == threading.main_thread():
-            signal.signal(signal.SIGTERM, self.cleanup)
+        signal.signal(signal.SIGTERM, self.cleanup)
         atexit.register(self.cleanup)
-        self.instaload = instaloader.Instaloader()
+        
     
     def check_for_bot_update(self):
         self.write_log('Checking for updates...')
@@ -302,6 +298,7 @@ class InstaBot:
                 self.write_log('You are running the latest stable version')
         except:
             self.write_log('Could not check for updates')
+    
     
     def populate_user_blacklist(self):
         for user in self.user_blacklist:
@@ -355,9 +352,9 @@ class InstaBot:
         time.sleep(5 * random.random())
         login = self.s.post(
             self.url_login, data=self.login_post, allow_redirects=True)
-        successfulLogin = login.status_code == 200
+        #print(login.text)
         try:
-            if successfulLogin:
+            if login.status_code == 200:
                 self.csrftoken = login.cookies['csrftoken']
                 self.s.headers.update({'X-CSRFToken': login.cookies['csrftoken']})
         except:
@@ -371,19 +368,19 @@ class InstaBot:
                     challenge_url = re.search('checkpoint_url\": \"(.*)\",', login.text).group(1) #checkpoint_url": "(.*)",
                 self.write_log('Challenge required at ' + challenge_url)
                 
-                with self.s as clg:
+                with requests.Session() as clg:
                 
                     clg.headers.update({
-                        'Accept': '*/*',
-                        'Accept-Language': self.accept_language,
-                        'Accept-Encoding': 'gzip, deflate, br',
-                        'Connection': 'keep-alive',
-                        'Host': 'www.instagram.com',
-                        'Origin': 'https://www.instagram.com',            
-                        'User-Agent': self.user_agent,
-                        'X-Instagram-AJAX': '1',
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'x-requested-with': "XMLHttpRequest",
+                    'Accept': '*/*',
+                    'Accept-Language': self.accept_language,
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Host': 'www.instagram.com',
+                    'Origin': 'https://www.instagram.com',            
+                    'User-Agent': self.user_agent,
+                    'X-Instagram-AJAX': '1',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'x-requested-with': "XMLHttpRequest",
                     })
                     #Get challenge page
                     challenge_request_explore = clg.get(challenge_url)
@@ -412,12 +409,16 @@ class InstaBot:
                     }
                     
                     complete_challenge = clg.post(challenge_url, data=challenge_security_post, allow_redirects=True)
+                    print(complete_challenge.request.headers)
+                    #quit()
+                    self.write_log(complete_challenge.text)
+                    #quit()
                     self.csrftoken = complete_challenge.cookies['csrftoken']
                     self.s.headers.update({'X-CSRFToken': self.csrftoken, 'X-Instagram-AJAX': '1'})
-                    successfulLogin = complete_challenge.status_code == 200
                 
-            except Exception as err:
-                print("Login failed, response: \n\n" + login.text, err)
+                
+            except:
+                print("Login failed, response: \n\n" + login.text)
                 quit()
         
         else:      
@@ -431,7 +432,7 @@ class InstaBot:
         self.s.cookies['ig_or'] = 'landscape-primary'
         time.sleep(5 * random.random())
 
-        if successfulLogin:
+        if login.status_code == 200:
             r = self.s.get('https://www.instagram.com/')
             finder = r.text.find(self.user_login)
             if finder != -1:
@@ -563,13 +564,9 @@ class InstaBot:
 
     def get_username_by_user_id(self, user_id):
         if self.login_status:
-            try:
-                profile = instaloader.Profile.from_id(self.instaload.context,  user_id)
-                username = profile.username
-                return username
-            except:
-                logging.exception("Except on get_username_by_user_id")
-                return False
+            profile = instaloader.Profile.from_id(self.instaloader.context,  user_id)
+            username = profile.username
+            return username
         else:
             return False
 
